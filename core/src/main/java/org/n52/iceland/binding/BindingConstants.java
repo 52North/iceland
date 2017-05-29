@@ -29,4 +29,5 @@ public interface BindingConstants {
 
     String KVP_BINDING_ENDPOINT = "/kvp";
 
+    String STA_BINDING_ENDPOINT = "/sta";
 }
