@@ -19,11 +19,13 @@ package org.n52.iceland.binding.sta;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
+import java.net.URI;
 import java.util.Collections;
-import java.util.List;
 import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.n52.faroe.annotation.Configurable;
+import org.n52.faroe.annotation.Setting;
 import org.n52.iceland.binding.BindingConstants;
 import org.n52.iceland.binding.BindingKey;
 import org.n52.iceland.binding.MediaTypeBindingKey;
@@ -31,19 +33,17 @@ import org.n52.iceland.binding.PathBindingKey;
 import org.n52.iceland.binding.SimpleBinding;
 import org.n52.iceland.coding.decode.OwsDecodingException;
 import org.n52.iceland.exception.HTTPException;
-import org.n52.iceland.response.ServiceResponse;
+import org.n52.iceland.service.ServiceSettings;
 import org.n52.janmayen.Json;
-import org.n52.janmayen.http.HTTPStatus;
 import org.n52.janmayen.http.MediaType;
 import org.n52.janmayen.http.MediaTypes;
-import org.n52.shetland.ogc.om.OmObservation;
 import org.n52.shetland.ogc.ows.exception.NoApplicableCodeException;
 import org.n52.shetland.ogc.ows.exception.OwsExceptionReport;
 import org.n52.shetland.ogc.ows.service.OwsServiceRequest;
 import org.n52.shetland.ogc.ows.service.OwsServiceResponse;
 import org.n52.shetland.ogc.sos.Sos2Constants;
 import org.n52.shetland.ogc.sos.SosConstants;
-import org.n52.shetland.ogc.sos.response.GetObservationResponse;
+import org.n52.shetland.ogc.sta.StaSettings;
 import org.n52.svalbard.decode.Decoder;
 import org.n52.svalbard.decode.OperationDecoderKey;
 import org.n52.svalbard.decode.exception.DecodingException;
@@ -57,6 +57,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author <a href="mailto:m.kiesow@52north.org">Martin Kiesow</a>
  */
+@Configurable
 public class StaBinding extends SimpleBinding {
     private static final String CONFORMANCE_CLASS
             = "http://www.opengis.net/spec/SOS/2.0/conf/json";
@@ -66,6 +67,8 @@ public class StaBinding extends SimpleBinding {
     private static final String SERVICE = "service";
     private static final String VERSION = "version";
     private static final String REQUEST = "request";
+
+    private String serviceURL;
 
     private static final ImmutableSet<BindingKey> KEYS = ImmutableSet.<BindingKey>builder()
             .add(new PathBindingKey(BindingConstants.STA_BINDING_ENDPOINT))
@@ -102,9 +105,21 @@ public class StaBinding extends SimpleBinding {
         return Collections.unmodifiableSet(KEYS);
     }
 
+    public String getServiceURL() {
+        return this.serviceURL;
+    }
+
+    @Setting(ServiceSettings.SERVICE_URL)
+    public void setServiceURL(final URI url) {
+        this.serviceURL = url.toString();
+    }
+
     @Override
     public void doPostOperation(HttpServletRequest req, HttpServletResponse res) throws HTTPException,
             IOException {
+
+        StaSettings.getInstance().setServiceURL(serviceURL);
+        StaSettings.getInstance().setBindingEndpoint(BindingConstants.STA_BINDING_ENDPOINT);
 
         OwsServiceRequest request = null;
         try {
@@ -112,7 +127,6 @@ public class StaBinding extends SimpleBinding {
             checkServiceOperatorKeyTypes(request);
 
             //TODO make STA a supported service and create an OwsServiceKey from service and version)
-
             OwsServiceResponse response = getServiceOperator(request).receiveRequest(request);
             writeResponse(req, res, response);
 
