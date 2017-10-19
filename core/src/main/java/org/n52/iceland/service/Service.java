@@ -58,7 +58,7 @@ import com.google.common.base.Stopwatch;
  * @since 1.0.0
  */
 @Controller
-@RequestMapping(value = "/service", consumes = "*/*", produces = "*/*")
+@RequestMapping(value = {"/service", "/service/sta/**"},  consumes = "*/*", produces = "*/*")
 public class Service extends HttpServlet {
     private static final long serialVersionUID = -2103692310137045855L;
     private static final Logger LOGGER = LoggerFactory.getLogger(Service.class);

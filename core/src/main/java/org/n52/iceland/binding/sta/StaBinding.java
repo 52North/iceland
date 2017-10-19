@@ -16,11 +16,19 @@
  */
 package org.n52.iceland.binding.sta;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Enums;
 import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -31,23 +39,25 @@ import org.n52.iceland.binding.BindingKey;
 import org.n52.iceland.binding.MediaTypeBindingKey;
 import org.n52.iceland.binding.PathBindingKey;
 import org.n52.iceland.binding.SimpleBinding;
-import org.n52.iceland.coding.decode.OwsDecodingException;
 import org.n52.iceland.exception.HTTPException;
 import org.n52.iceland.service.ServiceSettings;
-import org.n52.janmayen.Json;
+import org.n52.janmayen.http.HTTPMethods;
 import org.n52.janmayen.http.MediaType;
 import org.n52.janmayen.http.MediaTypes;
+import org.n52.shetland.ogc.ows.exception.CodedException;
 import org.n52.shetland.ogc.ows.exception.NoApplicableCodeException;
 import org.n52.shetland.ogc.ows.exception.OwsExceptionReport;
 import org.n52.shetland.ogc.ows.service.OwsServiceRequest;
 import org.n52.shetland.ogc.ows.service.OwsServiceResponse;
 import org.n52.shetland.ogc.sos.Sos2Constants;
 import org.n52.shetland.ogc.sos.SosConstants;
+import org.n52.shetland.ogc.sta.StaConstants;
+import org.n52.shetland.ogc.sta.StaConstants.PathSegment;
 import org.n52.shetland.ogc.sta.StaSettings;
-import org.n52.svalbard.decode.Decoder;
-import org.n52.svalbard.decode.OperationDecoderKey;
+import org.n52.shetland.ogc.sta.request.StaGetDatastreamsRequest;
+import org.n52.shetland.ogc.sta.request.StaGetObservationsRequest;
+import org.n52.shetland.ogc.sta.request.StaGetRequest;
 import org.n52.svalbard.decode.exception.DecodingException;
-import org.n52.svalbard.decode.exception.NoDecoderForKeyException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,6 +125,29 @@ public class StaBinding extends SimpleBinding {
     }
 
     @Override
+    public void doGetOperation(HttpServletRequest request, HttpServletResponse response) throws HTTPException, IOException {
+
+        StaSettings.getInstance().setServiceURL(serviceURL);
+        StaSettings.getInstance().setBindingEndpoint(BindingConstants.STA_BINDING_ENDPOINT);
+
+        OwsServiceRequest owsRequest = null;
+        try {
+
+            owsRequest = parseRequest(request);
+            checkServiceOperatorKeyTypes(owsRequest);
+
+            //TODO make STA a supported service and create an OwsServiceKey from service and version)
+            OwsServiceResponse owsResponse = getServiceOperator(owsRequest).receiveRequest(owsRequest);
+            writeResponse(request, response, owsResponse);
+
+        } catch (OwsExceptionReport oer) {
+            oer.setVersion(request != null ? owsRequest.getVersion() : null);
+            LOG.warn("Unexpected error", oer);
+            writeOwsExceptionReport(request, response, oer);
+        }
+    }
+
+    @Override
     public void doPostOperation(HttpServletRequest req, HttpServletResponse res) throws HTTPException,
             IOException {
 
@@ -123,6 +156,7 @@ public class StaBinding extends SimpleBinding {
 
         OwsServiceRequest request = null;
         try {
+
             request = parseRequest(req);
             checkServiceOperatorKeyTypes(request);
 
@@ -140,38 +174,325 @@ public class StaBinding extends SimpleBinding {
     private OwsServiceRequest parseRequest(HttpServletRequest request)
             throws OwsExceptionReport {
         try {
-            JsonNode json = Json.loadReader(request.getReader());
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("JSON-REQUEST: {}", Json.print(json));
-            }
-            OperationDecoderKey key = new OperationDecoderKey(
-                    json.path(SERVICE).textValue(),
-                    json.path(VERSION).textValue(),
-                    json.path(REQUEST).textValue(),
-                    MediaTypes.APPLICATION_JSON);
-            Decoder<OwsServiceRequest, JsonNode> decoder =
-                    getDecoder(key);
 
-            if (decoder == null) {
-                NoDecoderForKeyException cause = new NoDecoderForKeyException(key);
+            String accept = request.getHeader("Accept");
+            String contentType = request.getHeader("Content-Type");
+
+            // serviceURI "http.../52n-sos-webapp/service"
+            String requestURI = request.getRequestURI(); // "/52n-sos-webapp/sta/v1.0/Datastreams", "/52n-sos-webapp/service"
+            String requestQuery = request.getQueryString(); // "$count=true&$top=5&$skip=2", "service=STA&version=v1.0&request=GetObservation"
+
+            String decodablePath = extractDecodablePath(serviceURL, requestURI);
+
+            // get service version
+            String serviceVersion;
+            String resourcePath = decodablePath;
+            if (decodablePath.startsWith("/" + StaConstants.VERSION_1_0)) {
+                serviceVersion = StaConstants.VERSION_1_0;
+                resourcePath = resourcePath.replace("/" + StaConstants.VERSION_1_0, "");
+
+            } else {
+                DecodingException cause = new DecodingException("Service version not supported.", request);
                 throw new NoApplicableCodeException().withMessage(cause.getMessage()).causedBy(cause);
             }
 
-            OwsServiceRequest sosRequest;
-            try {
-                sosRequest = decoder.decode(json);
-            } catch (OwsDecodingException ex) {
-                throw ex.getCause();
-            } catch (DecodingException ex) {
-                throw new NoApplicableCodeException().withMessage(ex.getMessage()).causedBy(ex);
+            // get path parameters as list
+            List<PathSegment> pathList = new ArrayList<>();
+            if (resourcePath.isEmpty() || resourcePath.equals("/")) {
+                // TODO return links to entity sets (at least for GET)
+
+            } else {
+                decodeResourcePath(resourcePath, pathList);
             }
 
-            sosRequest.setRequestContext(getRequestContext(request));
+            // get query parameters as map
+            LinkedHashMap<StaConstants.QueryOption, String> queryOptions = decodeQueryOptions(requestQuery.trim());
+
+            // get resource type (to determine which request type to choose)
+            StaConstants.EntityPathComponent resourceType;
+            // TODO replace with loop
+            if (pathList.size() > 0 && pathList.get(pathList.size() - 1).getComponent() instanceof StaConstants.EntityPathComponent) {
+                resourceType = (StaConstants.EntityPathComponent) pathList.get(pathList.size() - 1).getComponent();
+            } else if (pathList.size() > 1 && pathList.get(pathList.size() - 2).getComponent() instanceof StaConstants.EntityPathComponent) {
+                resourceType = (StaConstants.EntityPathComponent) pathList.get(pathList.size() - 2).getComponent();
+            } else if (pathList.size() > 2 && pathList.get(pathList.size() - 3).getComponent() instanceof StaConstants.EntityPathComponent) {
+                resourceType = (StaConstants.EntityPathComponent) pathList.get(pathList.size() - 3).getComponent();
+            } else {
+                throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
+            }
+
+            // create request
+            OwsServiceRequest sosRequest = null;
+            switch (request.getMethod()) {
+                case HTTPMethods.GET:
+                    if (StaConstants.EntitySet.Datastreams == resourceType) {
+                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
+
+                        ((StaGetRequest) sosRequest).setPath(pathList);
+                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
+
+                        sosRequest.setRequestContext(getRequestContext(request));
+
+                    } else if (StaConstants.EntitySet.FeaturesOfInterest == resourceType) {
+
+                    } else if (StaConstants.EntitySet.HistoricalLocations == resourceType) {
+
+                    } else if (StaConstants.EntitySet.Locations == resourceType) {
+
+                    } else if (StaConstants.EntitySet.Observations == resourceType) {
+                        sosRequest = new StaGetObservationsRequest(StaConstants.SERVICE_NAME, serviceVersion);
+
+                        ((StaGetRequest) sosRequest).setPath(pathList);
+                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
+
+                        sosRequest.setRequestContext(getRequestContext(request));
+
+                    } else if (StaConstants.EntitySet.ObservedProperties == resourceType) {
+
+                    } else if (StaConstants.EntitySet.Sensors == resourceType) {
+
+                    } else if (StaConstants.EntitySet.Things == resourceType) {
+
+                    } else if (StaConstants.Entity.Datastream == resourceType) {
+                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
+
+                        ((StaGetRequest) sosRequest).setPath(pathList);
+                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
+
+                        sosRequest.setRequestContext(getRequestContext(request));
+
+                    } else if (StaConstants.Entity.FeatureOfInterest == resourceType) {
+
+                    } else if (StaConstants.Entity.HistoricalLocation == resourceType) {
+
+                    } else if (StaConstants.Entity.Location == resourceType) {
+
+                    } else if (StaConstants.Entity.Observation == resourceType) {
+
+                    } else if (StaConstants.Entity.ObservedProperty == resourceType) {
+
+                    } else if (StaConstants.Entity.Sensor == resourceType) {
+
+                    } else if (StaConstants.Entity.Thing == resourceType) {
+
+                    } else {
+                        throw new IOException("STA EntitySet '" + pathList.get(0) + "' is not supported.");
+                    }
+                    break;
+
+                case HTTPMethods.POST:
+                    throw new IOException("HTTP POST not supported yet.");
+
+                case HTTPMethods.PATCH:
+                    throw new IOException("HTTP PATCH not supported yet.");
+
+                case HTTPMethods.DELETE:
+                    throw new IOException("HTTP DELETE not supported yet.");
+
+                default:
+                    throw new IOException("Unsupported HTTP method.");
+            }
+
             return sosRequest;
 
         } catch (IOException ioe) {
             throw new NoApplicableCodeException().causedBy(ioe).withMessage(
                     "Error while reading request! Message: %s", ioe.getMessage());
+        }
+    }
+
+    /**
+     * remove parts of the service url from the request path
+     * @param serviceURL e.g. "http://localhost:8080/52n-sos-webapp/service"
+     * @param requestURI e.g. "/52n-sos-webapp/service/sta/v1.0/Datastreams"
+     * @return decodable path for STA, e.g. "/v1.0/Datastreams"
+     */
+    private String extractDecodablePath(String serviceURL, String requestURI) throws MalformedURLException {
+
+        URL url = new URL(serviceURL);
+        String service = serviceURL.replace(url.getProtocol() + "://", "");
+
+        String urlAuthority = url.getAuthority();
+        if (urlAuthority != null && !urlAuthority.isEmpty()) {
+
+            service = service.replace(urlAuthority, "");
+        }
+
+        return requestURI.replace(service + BindingConstants.STA_BINDING_ENDPOINT, "");
+    }
+
+    /**
+     * decode a resource path
+     * @param path resource path, e.g. "/Datastreams(1)/Observations"
+     * @param list a list of Entities, Parameters or Options with optional IDs to receive the path components
+     */
+    private void decodeResourcePath(String path, List<StaConstants.PathSegment> list) throws CodedException {
+
+        if (path == null || path.isEmpty()) {
+            // abort
+
+        } else if (path.indexOf("/") == 0) {
+            // cut preceeding slash
+            decodeResourcePath(path.substring(1), list);
+
+        } else {
+            // one or more path components left
+
+            if (path.startsWith("$")) {
+                // Option (always last)
+
+                String option = (path.split("/"))[0];
+                list.add(new PathSegment(StaConstants.Option.valueOf(option)));
+
+                // there shall be no other components after this
+
+            } else if (path.matches("^[a-zA-Z]+$")) {
+                // last Entity, EntitySet or Parameter
+
+                if (Enums.getIfPresent(StaConstants.Entity.class, path).orNull() != null) {
+                    list.add(new PathSegment(StaConstants.Entity.valueOf(path)));
+
+                } else if (Enums.getIfPresent(StaConstants.EntitySet.class, path).orNull() != null) {
+                    list.add(new PathSegment(StaConstants.EntitySet.valueOf(path)));
+
+                } else if (Enums.getIfPresent(StaConstants.Parameter.class, path).orNull() != null) {
+                    list.add(new PathSegment(StaConstants.Parameter.valueOf(path)));
+
+                } else {
+                    throw new NoApplicableCodeException().withMessage("Error while reading request! Resource %s unavailable.", path);
+                }
+
+            } else if (path.matches("^[a-zA-Z]+/.*$")) {
+                // Entity, EntitySet or Parameter
+
+                String first = (path.split("/"))[0];
+
+                if (Enums.getIfPresent(StaConstants.Entity.class, first).orNull() != null) {
+                    list.add(new PathSegment(StaConstants.Entity.valueOf(first)));
+
+                } else if (Enums.getIfPresent(StaConstants.EntitySet.class, first).orNull() != null) {
+                    list.add(new PathSegment(StaConstants.EntitySet.valueOf(first)));
+
+                } else if (Enums.getIfPresent(StaConstants.Parameter.class, first).orNull() != null) {
+                    list.add(new PathSegment(StaConstants.Parameter.valueOf(first)));
+
+                } else {
+                    throw new NoApplicableCodeException().withMessage("Error while reading request! Resource %s unavailable.", first);
+                }
+                decodeResourcePath(path.replace(first, ""), list);
+
+            } else if (path.matches("^[a-zA-Z]+\\(.+\\)$")) {
+                // last EntitySet with ID
+
+                String[] esid = path.split("\\(");
+
+                if (esid.length != 2) {
+                    throw new NoApplicableCodeException().withMessage("Error while reading request! Wrong resource path or identifier format.", "");
+
+                } else if (Enums.getIfPresent(StaConstants.EntitySet.class, path).orNull() != null) {
+
+                    // cut end brace
+                    String id = esid[1].substring(0, esid[1].length() -1);
+                    list.add(new PathSegment(StaConstants.EntitySet.valueOf(esid[0]), id));
+
+                } else {
+                    throw new NoApplicableCodeException().withMessage("Error while reading request! Resource %s is not an STA EntitySet.", path);
+                }
+
+            } else if (path.matches("^[a-zA-Z]+\\(.+\\)/.*$")) {
+                // EntitySet with ID
+
+                String first = (path.split("\\)/"))[0];
+                String[] esid = first.split("\\(");
+
+                if (esid.length != 2) {
+                    throw new NoApplicableCodeException().withMessage("Error while reading request! Wrong resource path or identifier format.", "");
+
+                } else if (Enums.getIfPresent(StaConstants.EntitySet.class, first).orNull() != null) {
+
+                    // cut end brace
+                    String id = esid[1].substring(0, esid[1].length() -1);
+                    list.add(new PathSegment(StaConstants.EntitySet.valueOf(esid[0]), id));
+
+                } else {
+                    throw new NoApplicableCodeException().withMessage("Error while reading request! Resource %s is not an STA EntitySet.", first);
+                }
+                decodeResourcePath(path.replace(first + "\\)", ""), list);
+
+            } else {
+
+                throw new NoApplicableCodeException().withMessage("Error while reading request! Wrong resource path format.", "");
+            }
+        }
+    }
+
+    /**
+     * decode a query string
+     * @param path query string, e.g. "$top=10&$skip=5&$filter&$count=true"
+     * @param map an ordered map of parameter names and values to receive the query options
+     */
+    private LinkedHashMap<StaConstants.QueryOption, String> decodeQueryOptions(String options) throws CodedException {
+
+        if (options == null || options.isEmpty()) {
+            return new LinkedHashMap<>(0);
+
+        } else {
+
+            String[] queryComponents = options.split("&");
+            LinkedHashMap<StaConstants.QueryOption, String> map = new LinkedHashMap<>(queryComponents.length);
+
+            for (String component : queryComponents) {
+                String[] keyValue = component.split("=");
+                String value = keyValue[1];
+
+                if (value.isEmpty()) {
+                    // TODO throw exception or log empty option
+
+                } else if (Enums.getIfPresent(StaConstants.QueryOption.class, keyValue[0]).isPresent()) {
+
+                    StaConstants.QueryOption key = StaConstants.QueryOption.valueOf(keyValue[0]);
+
+                    // check for correct values
+                    switch (key) {
+                        case $count:
+                            if (value.equals("true") || value.equals("false")) {
+                                map.put(key, value);
+                            } else {
+                                // TODO throw exception
+                            }
+                            break;
+                        case $skip:
+                            map.put(key, String.valueOf(Integer.parseInt(value)));
+                            break;
+                        case $top:
+                            map.put(key, String.valueOf(Integer.parseInt(value)));
+                            break;
+                        case $expand:
+                            if (value.matches("^[a-zA-Z]+(/[a-zA-Z]+)*$")) {
+
+                                map.put(key, value);
+                            } else {
+                                // TODO throw exception
+                            }
+                            break;
+                        case $filter:
+                            // TODO check
+                            break;
+                        case $orderby:
+                            // TODO check
+                            break;
+                        case $select:
+                            // TODO check
+                            break;
+                        default:
+                            break;
+                    }
+
+                } else {
+                    // TODO throw exception or log wrong option
+                }
+            }
+            return map;
         }
     }
 }
