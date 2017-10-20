@@ -16,9 +16,6 @@
  */
 package org.n52.iceland.service;
 
-import static org.n52.iceland.service.MiscSettings.HTTP_STATUS_CODE_USE_IN_KVP_POX_BINDING;
-import static org.n52.iceland.service.ServiceSettings.SERVICE_URL;
-
 import java.net.URI;
 import java.util.Locale;
 
@@ -36,43 +33,29 @@ import org.n52.svalbard.CodingSettings;
  *         J&uuml;rrens</a>
  *
  * @since 1.0.0
+ * @deprecated Deprecated use Injection
  */
 @Configurable
 @Deprecated
-public class ServiceConfiguration implements Constructable {
+public class ServiceConfiguration
+        implements Constructable {
     private static ServiceConfiguration instance;
 
     /**
      * character encoding for responses.
      */
     private boolean encodeFullChildrenInDescribeSensor;
+
     private boolean addOutputsToSensorML;
-    private boolean strictSpatialFilteringProfile;
+
     private boolean validateResponse;
+
     private boolean useHttpStatusCodesInKvpAndPoxBinding;
-
-    /**
-     * @return Returns a singleton instance of the ServiceConfiguration.
-     */
-    @Deprecated
-    public static synchronized ServiceConfiguration getInstance() {
-        return ServiceConfiguration.instance;
-    }
-
-    @Override
-    public void init() {
-        ServiceConfiguration.instance = this;
-    }
 
     /**
      * URL of this service.
      */
     private String serviceURL;
-
-    /**
-     * directory of sensor descriptions in SensorML format.
-     */
-    private String sensorDirectory;
 
     /**
      * Prefix URN for the spatial reference system.
@@ -113,6 +96,17 @@ public class ServiceConfiguration implements Constructable {
 
     private boolean streamingEncoding = true;
 
+    private boolean includeChildObservableProperties;
+
+    @Deprecated
+    public static synchronized ServiceConfiguration getInstance() {
+        return ServiceConfiguration.instance;
+    }
+
+    @Override
+    public void init() {
+        ServiceConfiguration.instance = this;
+    }
 
     @Deprecated
     public String getDefaultOfferingPrefix() {
@@ -124,7 +118,7 @@ public class ServiceConfiguration implements Constructable {
         return encodeFullChildrenInDescribeSensor;
     }
 
-//    @Setting(ENCODE_FULL_CHILDREN_IN_DESCRIBE_SENSOR)
+    // @Setting(ENCODE_FULL_CHILDREN_IN_DESCRIBE_SENSOR)
     @Deprecated
     public void setEncodeFullChildrenInDescribeSensor(final boolean encodeFullChildrenInDescribeSensor) {
         this.encodeFullChildrenInDescribeSensor = encodeFullChildrenInDescribeSensor;
@@ -135,21 +129,10 @@ public class ServiceConfiguration implements Constructable {
         return addOutputsToSensorML;
     }
 
-//    @Setting(ADD_OUTPUTS_TO_SENSOR_ML)
+    // @Setting(ADD_OUTPUTS_TO_SENSOR_ML)
     @Deprecated
     public void setAddOutputsToSensorML(final boolean addOutputsToSensorML) {
         this.addOutputsToSensorML = addOutputsToSensorML;
-    }
-
-    @Deprecated
-    public boolean isStrictSpatialFilteringProfile() {
-        return strictSpatialFilteringProfile;
-    }
-
-//    @Setting(STRICT_SPATIAL_FILTERING_PROFILE)
-    @Deprecated
-    public void setStrictSpatialFilteringProfile(final boolean strictSpatialFilteringProfile) {
-        this.strictSpatialFilteringProfile = strictSpatialFilteringProfile;
     }
 
     public boolean isValidateResponse() {
@@ -173,25 +156,10 @@ public class ServiceConfiguration implements Constructable {
         return useHttpStatusCodesInKvpAndPoxBinding;
     }
 
-    @Setting(HTTP_STATUS_CODE_USE_IN_KVP_POX_BINDING)
+    @Setting(MiscSettings.HTTP_STATUS_CODE_USE_IN_KVP_POX_BINDING)
     public void setUseHttpStatusCodesInKvpAndPoxBinding(final boolean useHttpStatusCodesInKvpAndPoxBinding) {
-        Validation.notNull(HTTP_STATUS_CODE_USE_IN_KVP_POX_BINDING, useHttpStatusCodesInKvpAndPoxBinding);
+        Validation.notNull(MiscSettings.HTTP_STATUS_CODE_USE_IN_KVP_POX_BINDING, useHttpStatusCodesInKvpAndPoxBinding);
         this.useHttpStatusCodesInKvpAndPoxBinding = useHttpStatusCodesInKvpAndPoxBinding;
-    }
-
-    /**
-     * @return Returns the sensor description directory
-     */
-    // HibernateProcedureUtilities
-    @Deprecated
-    public String getSensorDir() {
-        return sensorDirectory;
-    }
-
-//    @Setting(SENSOR_DIRECTORY)
-    @Deprecated
-    public void setSensorDirectory(final String sensorDirectory) {
-        this.sensorDirectory = sensorDirectory;
     }
 
     /**
@@ -203,7 +171,7 @@ public class ServiceConfiguration implements Constructable {
         return serviceURL;
     }
 
-    @Setting(SERVICE_URL)
+    @Setting(ServiceSettings.SERVICE_URL)
     public void setServiceURL(final URI serviceURL) throws ConfigurationError {
         Validation.notNull("Service URL", serviceURL);
         String url = serviceURL.toString();
@@ -213,13 +181,13 @@ public class ServiceConfiguration implements Constructable {
         this.serviceURL = url;
     }
 
-//    @Setting(ServiceSettings.DEREGISTER_JDBC_DRIVER)
-    @Deprecated // SOS-specific?!
+    // @Setting(ServiceSettings.DEREGISTER_JDBC_DRIVER)
+    @Deprecated
     public void setDeregisterJdbcDriver(final boolean deregisterJdbcDriver) {
         this.deregisterJdbcDriver = deregisterJdbcDriver;
     }
 
-    @Deprecated // SOS-specific
+    @Deprecated
     public boolean isDeregisterJdbcDriver() {
         return deregisterJdbcDriver;
     }
@@ -265,21 +233,34 @@ public class ServiceConfiguration implements Constructable {
         return maxNumberOfReturnedValues;
     }
 
-    @Setting(MiscSettings.RETURN_OVERALL_EXTREMA_FOR_FIRST_LATEST)
-    public void setOverallExtrema(boolean overallExtrema) {
-        this.overallExtrema  = overallExtrema;
-    }
-
-    public boolean isOverallExtrema() {
-        return overallExtrema;
-    }
-
     @Setting(StreamingSettings.FORCE_STREAMING_ENCODING)
     public void setForceStreamingEncoding(boolean streamingEncoding) {
-        this.streamingEncoding  = streamingEncoding;
+        this.streamingEncoding = streamingEncoding;
     }
 
     public boolean isForceStreamingEncoding() {
         return streamingEncoding;
     }
+
+    public boolean isIncludeChildObservableProperties() {
+        return includeChildObservableProperties;
+    }
+
+    /*
+     * Now, we return the list of returned features and not a complex encoded
+     * relatedFeature => this setting is not needed at all See
+     * AbstractGetFeatureOfInterestDAO:100-195 Don't forget to activate in
+     * MiscSettings the relatedFeature setting
+     *
+     * @Setting(MiscSettings.RELATED_SAMPLING_FEATURE_ROLE_FOR_CHILD_FEATURES)
+     * public void setRelatedSamplingFeatureRoleForChildFeatures(final String
+     * relatedSamplingFeatureRoleForChildFeatures) { Validation.notNullOrEmpty(
+     * MiscSettings.RELATED_SAMPLING_FEATURE_ROLE_FOR_CHILD_FEATURES,
+     * relatedSamplingFeatureRoleForChildFeatures);
+     * this.relatedSamplingFeatureRoleForChildFeatures =
+     * relatedSamplingFeatureRoleForChildFeatures; }
+     *
+     * public String getRelatedSamplingFeatureRoleForChildFeatures() { return
+     * relatedSamplingFeatureRoleForChildFeatures; }
+     */
 }

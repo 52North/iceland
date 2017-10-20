@@ -23,10 +23,12 @@ import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.n52.iceland.binding.Binding;
 import org.n52.iceland.binding.BindingKey;
 import org.n52.iceland.binding.MediaTypeBindingKey;
-import org.n52.iceland.binding.PathBindingKey;
 import org.n52.iceland.binding.SimpleBinding;
 import org.n52.iceland.coding.decode.OwsDecodingException;
 import org.n52.iceland.exception.HTTPException;
@@ -35,21 +37,17 @@ import org.n52.janmayen.http.MediaType;
 import org.n52.janmayen.http.MediaTypes;
 import org.n52.shetland.ogc.ows.exception.NoApplicableCodeException;
 import org.n52.shetland.ogc.ows.exception.OwsExceptionReport;
+import org.n52.shetland.ogc.ows.service.OwsOperationKey;
 import org.n52.shetland.ogc.ows.service.OwsServiceRequest;
 import org.n52.shetland.ogc.ows.service.OwsServiceResponse;
 import org.n52.shetland.ogc.sos.Sos2Constants;
 import org.n52.shetland.ogc.sos.SosConstants;
-import org.n52.shetland.ogc.ows.service.OwsOperationKey;
 import org.n52.svalbard.decode.Decoder;
 import org.n52.svalbard.decode.OperationDecoderKey;
 import org.n52.svalbard.decode.exception.DecodingException;
 import org.n52.svalbard.decode.exception.NoDecoderForKeyException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableSet;
 
 /**
  * {@link Binding} implementation for JSON encoded requests
@@ -58,7 +56,7 @@ import com.google.common.collect.ImmutableSet;
  * @since 1.0.0
  */
 public class JSONBinding extends SimpleBinding {
-    private static final String URL_PATTERN = "/json";
+    @Deprecated
     private static final String CONFORMANCE_CLASS
             = "http://www.opengis.net/spec/SOS/2.0/conf/json";
     private static final Set<String> CONFORMANCE_CLASSES = Collections
@@ -67,11 +65,8 @@ public class JSONBinding extends SimpleBinding {
     private static final String SERVICE = "service";
     private static final String VERSION = "version";
     private static final String REQUEST = "request";
-
-    private static final ImmutableSet<BindingKey> KEYS = ImmutableSet.<BindingKey>builder()
-            .add(new PathBindingKey(URL_PATTERN))
-            .add(new MediaTypeBindingKey(MediaTypes.APPLICATION_JSON))
-            .build();
+    private static final Set<BindingKey> KEYS =
+            Collections.singleton(new MediaTypeBindingKey(MediaTypes.APPLICATION_JSON));
 
     @Override
     public Set<BindingKey> getKeys() {
@@ -80,7 +75,7 @@ public class JSONBinding extends SimpleBinding {
 
     @Override
     public Set<String> getConformanceClasses(String service, String version) {
-        if(SosConstants.SOS.equals(service) && Sos2Constants.SERVICEVERSION.equals(version)) {
+        if (SosConstants.SOS.equals(service) && Sos2Constants.SERVICEVERSION.equals(version)) {
             return Collections.unmodifiableSet(CONFORMANCE_CLASSES);
         }
         return Collections.emptySet();
@@ -129,8 +124,7 @@ public class JSONBinding extends SimpleBinding {
                     json.path(VERSION).textValue(),
                     json.path(REQUEST).textValue(),
                     MediaTypes.APPLICATION_JSON);
-            Decoder<OwsServiceRequest, JsonNode> decoder =
-                    getDecoder(key);
+            Decoder<OwsServiceRequest, JsonNode> decoder = getDecoder(key);
             if (decoder == null) {
                 NoDecoderForKeyException cause = new NoDecoderForKeyException(key);
                 throw new NoApplicableCodeException().withMessage(cause.getMessage()).causedBy(cause);
@@ -150,16 +144,4 @@ public class JSONBinding extends SimpleBinding {
                     "Error while reading request! Message: %s", ioe.getMessage());
         }
     }
-
-    @Override
-    public String getUrlPattern() {
-        return URL_PATTERN;
-    }
-
-    @Override
-    public Set<MediaType> getSupportedEncodings() {
-        return Collections.singleton(MediaTypes.APPLICATION_JSON);
-    }
-
-
 }

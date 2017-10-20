@@ -33,10 +33,8 @@ import org.slf4j.LoggerFactory;
 
 import org.n52.faroe.annotation.Configurable;
 import org.n52.faroe.annotation.Setting;
-import org.n52.iceland.binding.BindingConstants;
 import org.n52.iceland.binding.BindingKey;
 import org.n52.iceland.binding.MediaTypeBindingKey;
-import org.n52.iceland.binding.PathBindingKey;
 import org.n52.iceland.binding.SimpleBinding;
 import org.n52.iceland.coding.decode.OwsDecodingException;
 import org.n52.iceland.exception.HTTPException;
@@ -55,18 +53,17 @@ import org.n52.shetland.ogc.ows.exception.InvalidParameterValueException;
 import org.n52.shetland.ogc.ows.exception.MissingServiceParameterException;
 import org.n52.shetland.ogc.ows.exception.OperationNotSupportedException;
 import org.n52.shetland.ogc.ows.exception.OwsExceptionReport;
+import org.n52.shetland.ogc.ows.service.OwsOperationKey;
 import org.n52.shetland.ogc.ows.service.OwsServiceRequest;
 import org.n52.shetland.ogc.ows.service.OwsServiceResponse;
 import org.n52.shetland.ogc.sos.Sos2Constants;
 import org.n52.shetland.ogc.sos.SosConstants;
 import org.n52.svalbard.ConformanceClasses;
-import org.n52.shetland.ogc.ows.service.OwsOperationKey;
 import org.n52.svalbard.decode.Decoder;
 import org.n52.svalbard.decode.OperationDecoderKey;
 import org.n52.svalbard.decode.exception.DecodingException;
 
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableSet;
 
 /**
  * OWS binding for Key-Value-Pair (HTTP-Get) requests
@@ -78,18 +75,15 @@ public class KvpBinding extends SimpleBinding {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KvpBinding.class);
 
-    @Deprecated // SOS-specific
+    @Deprecated
     private static final Set<String> CONFORMANCE_CLASSES = Collections
             .singleton(ConformanceClasses.SOS_V2_KVP_CORE_BINDING);
-
-    private static final ImmutableSet<BindingKey> KEYS = ImmutableSet.<BindingKey>builder()
-            .add(new PathBindingKey(BindingConstants.KVP_BINDING_ENDPOINT))
-            .add(new MediaTypeBindingKey(MediaTypes.APPLICATION_KVP))
-            .build();
+    private static final Set<BindingKey> KEYS =
+            Collections.singleton(new MediaTypeBindingKey(MediaTypes.APPLICATION_KVP));
 
     private boolean useHttpResponseCodes;
 
-    private boolean includeOriginal = false;
+    private boolean includeOriginalRequest;
 
     @Setting(MiscSettings.HTTP_STATUS_CODE_USE_IN_KVP_POX_BINDING)
     public void setUseHttpResponseCodes(boolean useHttpResponseCodes) {
@@ -102,25 +96,14 @@ public class KvpBinding extends SimpleBinding {
     }
 
     @Setting(MiscSettings.INCLUDE_ORIGINAL_REQUEST)
-    public void setIncludeOriginalRequest(boolean includeOriginal) {
-        this.includeOriginal = includeOriginal;
+    public void setIncludeOriginalRequest(boolean includeOriginalRequest) {
+        this.includeOriginalRequest = includeOriginalRequest;
     }
 
     @Override
     public Set<BindingKey> getKeys() {
         return Collections.unmodifiableSet(KEYS);
     }
-
-    @Override
-    public Set<MediaType> getSupportedEncodings() {
-        return Collections.singleton(MediaTypes.APPLICATION_KVP);
-    }
-
-    @Override
-    public String getUrlPattern() {
-        return BindingConstants.KVP_BINDING_ENDPOINT;
-    }
-
 
     @Override
     public Set<String> getConformanceClasses(String service, String version) {
@@ -200,7 +183,7 @@ public class KvpBinding extends SimpleBinding {
         } catch (DecodingException ex) {
             throw toOwsExceptionReport(ex);
         }
-        if (this.includeOriginal) {
+        if (this.includeOriginalRequest) {
             request.setOriginalRequest(String.join("?", req.getRequestURL(), req.getQueryString()));
         }
 
