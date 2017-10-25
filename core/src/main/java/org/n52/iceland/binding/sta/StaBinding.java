@@ -23,18 +23,14 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.n52.faroe.annotation.Configurable;
 import org.n52.faroe.annotation.Setting;
-import org.n52.iceland.binding.BindingConstants;
 import org.n52.iceland.binding.BindingKey;
 import org.n52.iceland.binding.MediaTypeBindingKey;
 import org.n52.iceland.binding.PathBindingKey;
@@ -63,7 +59,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link Binding} implementation for JSON encoded RESTful requests as used in SensorThings API
+ * {@link org.n52.iceland.binding.Binding} implementation for JSON encoded RESTful requests as used in SensorThings API
  *
  * @author <a href="mailto:m.kiesow@52north.org">Martin Kiesow</a>
  */
@@ -81,7 +77,6 @@ public class StaBinding extends SimpleBinding {
     private String serviceURL;
 
     private static final ImmutableSet<BindingKey> KEYS = ImmutableSet.<BindingKey>builder()
-            .add(new PathBindingKey(BindingConstants.STA_BINDING_ENDPOINT))
             .add(new MediaTypeBindingKey(MediaTypes.APPLICATION_STA))
             .build();
 
@@ -92,14 +87,7 @@ public class StaBinding extends SimpleBinding {
 
     @Override
     protected MediaType getDefaultContentType() {
-        // TODO change to APPLICATION_STA?
-        //return MediaTypes.APPLICATION_JSON;
         return MediaTypes.APPLICATION_STA;
-    }
-
-    @Override
-    public String getUrlPattern() {
-        return BindingConstants.STA_BINDING_ENDPOINT;
     }
 
     @Override
@@ -128,7 +116,6 @@ public class StaBinding extends SimpleBinding {
     public void doGetOperation(HttpServletRequest request, HttpServletResponse response) throws HTTPException, IOException {
 
         StaSettings.getInstance().setServiceURL(serviceURL);
-        StaSettings.getInstance().setBindingEndpoint(BindingConstants.STA_BINDING_ENDPOINT);
 
         OwsServiceRequest owsRequest = null;
         try {
@@ -152,7 +139,6 @@ public class StaBinding extends SimpleBinding {
             IOException {
 
         StaSettings.getInstance().setServiceURL(serviceURL);
-        StaSettings.getInstance().setBindingEndpoint(BindingConstants.STA_BINDING_ENDPOINT);
 
         OwsServiceRequest request = null;
         try {
@@ -206,7 +192,10 @@ public class StaBinding extends SimpleBinding {
             }
 
             // get query parameters as map
-            LinkedHashMap<StaConstants.QueryOption, String> queryOptions = decodeQueryOptions(requestQuery.trim());
+            LinkedHashMap<StaConstants.QueryOption, String> queryOptions = null;
+            if (requestQuery != null && !requestQuery.trim().equals("")) {
+                decodeQueryOptions(requestQuery.trim());
+            }
 
             // get resource type (to determine which request type to choose)
             StaConstants.EntityPathComponent resourceType;
@@ -318,7 +307,7 @@ public class StaBinding extends SimpleBinding {
             service = service.replace(urlAuthority, "");
         }
 
-        return requestURI.replace(service + BindingConstants.STA_BINDING_ENDPOINT, "");
+        return requestURI.replace(service + StaConstants.STA_BINDING_ENDPOINT, "");
     }
 
     /**
