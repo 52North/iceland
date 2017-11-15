@@ -16,6 +16,7 @@
  */
 package org.n52.iceland.binding.sta;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Enums;
 import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -33,7 +35,6 @@ import org.n52.faroe.annotation.Configurable;
 import org.n52.faroe.annotation.Setting;
 import org.n52.iceland.binding.BindingKey;
 import org.n52.iceland.binding.MediaTypeBindingKey;
-import org.n52.iceland.binding.PathBindingKey;
 import org.n52.iceland.binding.SimpleBinding;
 import org.n52.iceland.exception.HTTPException;
 import org.n52.iceland.service.ServiceSettings;
@@ -51,8 +52,10 @@ import org.n52.shetland.ogc.sta.StaConstants;
 import org.n52.shetland.ogc.sta.StaConstants.PathSegment;
 import org.n52.shetland.ogc.sta.StaSettings;
 import org.n52.shetland.ogc.sta.request.StaGetDatastreamsRequest;
-import org.n52.shetland.ogc.sta.request.StaGetObservationsRequest;
 import org.n52.shetland.ogc.sta.request.StaGetRequest;
+import org.n52.svalbard.decode.AbstractStaRequestDecoder;
+import org.n52.svalbard.decode.Decoder;
+import org.n52.svalbard.decode.OperationDecoderKey;
 import org.n52.svalbard.decode.exception.DecodingException;
 
 import org.slf4j.Logger;
@@ -198,14 +201,24 @@ public class StaBinding extends SimpleBinding {
             }
 
             // get resource type (to determine which request type to choose)
+            // TODO remove segment and id, only resourceType is needed here
+            StaConstants.PathSegment resourceSegment;
             StaConstants.EntityPathComponent resourceType;
+            String resourceId;
             // TODO replace with loop
             if (pathList.size() > 0 && pathList.get(pathList.size() - 1).getComponent() instanceof StaConstants.EntityPathComponent) {
-                resourceType = (StaConstants.EntityPathComponent) pathList.get(pathList.size() - 1).getComponent();
+                resourceSegment = pathList.get(pathList.size() - 1);
             } else if (pathList.size() > 1 && pathList.get(pathList.size() - 2).getComponent() instanceof StaConstants.EntityPathComponent) {
-                resourceType = (StaConstants.EntityPathComponent) pathList.get(pathList.size() - 2).getComponent();
+                resourceSegment = pathList.get(pathList.size() - 2);
             } else if (pathList.size() > 2 && pathList.get(pathList.size() - 3).getComponent() instanceof StaConstants.EntityPathComponent) {
-                resourceType = (StaConstants.EntityPathComponent) pathList.get(pathList.size() - 3).getComponent();
+                resourceSegment = pathList.get(pathList.size() - 3);
+            } else {
+                throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
+            }
+
+            if (resourceSegment != null) {
+                resourceType = (StaConstants.EntityPathComponent) resourceSegment.getComponent();
+                resourceId = resourceSegment.getId();
             } else {
                 throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
             }
@@ -215,12 +228,13 @@ public class StaBinding extends SimpleBinding {
             switch (request.getMethod()) {
                 case HTTPMethods.GET:
                     if (StaConstants.EntitySet.Datastreams == resourceType) {
-                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
 
-                        ((StaGetRequest) sosRequest).setPath(pathList);
-                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
-
-                        sosRequest.setRequestContext(getRequestContext(request));
+//                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
+//
+//                        ((StaGetRequest) sosRequest).setPath(pathList);
+//                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
+//
+//                        sosRequest.setRequestContext(getRequestContext(request));
 
                     } else if (StaConstants.EntitySet.FeaturesOfInterest == resourceType) {
 
@@ -229,12 +243,32 @@ public class StaBinding extends SimpleBinding {
                     } else if (StaConstants.EntitySet.Locations == resourceType) {
 
                     } else if (StaConstants.EntitySet.Observations == resourceType) {
-                        sosRequest = new StaGetObservationsRequest(StaConstants.SERVICE_NAME, serviceVersion);
 
-                        ((StaGetRequest) sosRequest).setPath(pathList);
-                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
+                        Decoder<OwsServiceRequest, JsonNode> decoder;
+                        if (resourceSegment.getId() == null || resourceSegment.getId().equals("")) {
 
-                        sosRequest.setRequestContext(getRequestContext(request));
+                            // get decoder
+                            decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
+                                    serviceVersion, StaConstants.Operation.GET_OBSERVATIONS, MediaTypes.APPLICATION_STA));
+
+                        } else {
+                            // get decoder
+                            decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
+                                    serviceVersion, StaConstants.Operation.GET_OBSERVATIONS_WITH_ID, MediaTypes.APPLICATION_STA));
+                        }
+                        // set resource path and query options
+                        setStaParameters(decoder, resourceSegment, pathList, queryOptions);
+
+//                        sosRequest.setRequestContext(getRequestContext(request));
+
+                        // decode request
+                        try {
+                            sosRequest = decoder.decode(null);
+
+                        } catch (DecodingException de) {
+                            throw new IOException("GET Observations request could not be decoded: " + de.getMessage());
+                        }
+
 
                     } else if (StaConstants.EntitySet.ObservedProperties == resourceType) {
 
@@ -271,6 +305,39 @@ public class StaBinding extends SimpleBinding {
 
                 case HTTPMethods.POST:
                     throw new IOException("HTTP POST not supported yet.");
+
+                    // get resource path (there should be no query paramerters)
+                    // get data
+
+//                    try {
+//                        JsonNode json = Json.loadReader(request.getReader());
+//                        if (LOG.isDebugEnabled()) {
+//                            LOG.debug("JSON-REQUEST: {}", Json.print(json));
+//                        }
+//                        OperationDecoderKey key = new OperationDecoderKey(
+//                                json.path(SERVICE).textValue(),
+//                                json.path(VERSION).textValue(),
+//                                json.path(REQUEST).textValue(),
+//                                MediaTypes.APPLICATION_JSON);
+//                        Decoder<OwsServiceRequest, JsonNode> decoder = getDecoder(key);
+//                        if (decoder == null) {
+//                            NoDecoderForKeyException cause = new NoDecoderForKeyException(key);
+//                            throw new NoApplicableCodeException().withMessage(cause.getMessage()).causedBy(cause);
+//                        }
+//
+//                        try {
+//                            ((StaPostRequest) sosRequest) = decoder.decode(json);
+//                        } catch (OwsDecodingException ex) {
+//                            throw ex.getCause();
+//                        } catch (DecodingException ex) {
+//                            throw new NoApplicableCodeException().withMessage(ex.getMessage()).causedBy(ex);
+//                        }
+//                        sosRequest.setRequestContext(getRequestContext(request));
+//                        return sosRequest;
+//                    } catch (IOException ioe) {
+//                        throw new NoApplicableCodeException().causedBy(ioe).withMessage(
+//                                "Error while reading request! Message: %s", ioe.getMessage());
+//                    }
 
                 case HTTPMethods.PATCH:
                     throw new IOException("HTTP PATCH not supported yet.");
@@ -378,7 +445,7 @@ public class StaBinding extends SimpleBinding {
                 if (esid.length != 2) {
                     throw new NoApplicableCodeException().withMessage("Error while reading request! Wrong resource path or identifier format.", "");
 
-                } else if (Enums.getIfPresent(StaConstants.EntitySet.class, path).orNull() != null) {
+                } else if (Enums.getIfPresent(StaConstants.EntitySet.class, esid[0]).orNull() != null) {
 
                     // cut end brace
                     String id = esid[1].substring(0, esid[1].length() -1);
@@ -482,6 +549,21 @@ public class StaBinding extends SimpleBinding {
                 }
             }
             return map;
+        }
+    }
+
+    private void setStaParameters(Decoder decoder, StaConstants.PathSegment resource, List<StaConstants.PathSegment> pathList, Map<StaConstants.QueryOption, String> queryOptions) throws IOException {
+
+        if (decoder instanceof AbstractStaRequestDecoder) {
+
+            AbstractStaRequestDecoder staDecoder = (AbstractStaRequestDecoder) decoder;
+
+            staDecoder.setResource(resource);
+            staDecoder.setPath(pathList);
+            staDecoder.setQueryOptions(queryOptions);
+
+        } else {
+            throw new IOException("No applicable request decoder for resource: " + pathList.toString());
         }
     }
 }

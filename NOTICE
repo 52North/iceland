@@ -28,6 +28,9 @@ This project includes:
   52°North Jan Mayen under The Apache Software License, Version 2.0
   52°North Shetland under The Apache Software License, Version 2.0
   52°North Svalbard Core under The Apache Software License, Version 2.0
+  52°North Svalbard JSON Common under The Apache Software License, Version 2.0
+  52°North Svalbard JSON encoding under The Apache Software License, Version 2.0
+  52°North Svalbard SensorThings under The Apache Software License, Version 2.0
   Apache Commons CLI under Apache License, Version 2.0
   Apache Commons Codec under Apache License, Version 2.0
   Apache Commons Compress under Apache License, Version 2.0
@@ -55,12 +58,16 @@ This project includes:
   jackson-databind under The Apache Software License, Version 2.0
   Jackson-dataformat-YAML under The Apache Software License, Version 2.0
   Java Servlet API under CDDL 1.1 or GPL2 w/ CPE
+  JavaBeans(TM) Activation Framework under COMMON DEVELOPMENT AND DISTRIBUTION LICENSE (CDDL) Version 1.0
+  JavaMail API jar under CDDL or GPLv2+CE
   javax.inject under The Apache Software License, Version 2.0
   JCL 1.2 implemented over SLF4J under MIT License
   Joda-Time under Apache 2
+  JOpt Simple under The MIT License
   JSR166e under CC0 1.0 Universal
   JTS Topology Suite under Lesser General Public License (LGPL)
   JUnit under Eclipse Public License 1.0
+  libphonenumber under The Apache Software License, Version 2.0
   Lucene Common Analyzers under Apache 2
   Lucene Core under Apache 2
   Lucene Grouping under Apache 2
@@ -77,7 +84,9 @@ This project includes:
   MaxMind DB Reader under Apache License 2.0
   MaxMind GeoIP2 API under Apache License, Version 2.0
   mockito-core under The MIT License
+  Mozilla Rhino under Mozilla Public License, Version 2.0
   Netty under Apache License, Version 2.0
+  null under Lesser General Public License, version 3 or greater or Apache Software License, version 2.0
   Objenesis under Apache 2
   SLF4J API Module under MIT License
   SLF4J Simple Binding under MIT License
