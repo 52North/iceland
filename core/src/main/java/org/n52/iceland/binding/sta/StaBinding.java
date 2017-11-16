@@ -42,6 +42,8 @@ import org.n52.janmayen.http.HTTPMethods;
 import org.n52.janmayen.http.MediaType;
 import org.n52.janmayen.http.MediaTypes;
 import org.n52.shetland.ogc.ows.exception.CodedException;
+import org.n52.shetland.ogc.ows.exception.MissingServiceParameterException;
+import org.n52.shetland.ogc.ows.exception.MissingVersionParameterException;
 import org.n52.shetland.ogc.ows.exception.NoApplicableCodeException;
 import org.n52.shetland.ogc.ows.exception.OwsExceptionReport;
 import org.n52.shetland.ogc.ows.service.OwsServiceRequest;
@@ -52,6 +54,7 @@ import org.n52.shetland.ogc.sta.StaConstants;
 import org.n52.shetland.ogc.sta.StaConstants.PathSegment;
 import org.n52.shetland.ogc.sta.StaSettings;
 import org.n52.shetland.ogc.sta.request.StaGetDatastreamsRequest;
+import org.n52.shetland.ogc.sta.request.StaGetEntitySetsRequest;
 import org.n52.shetland.ogc.sta.request.StaGetRequest;
 import org.n52.svalbard.decode.AbstractStaRequestDecoder;
 import org.n52.svalbard.decode.Decoder;
@@ -121,13 +124,28 @@ public class StaBinding extends SimpleBinding {
         StaSettings.getInstance().setServiceURL(serviceURL);
 
         OwsServiceRequest owsRequest = null;
+        OwsServiceResponse owsResponse = null;
         try {
 
             owsRequest = parseRequest(request);
-            checkServiceOperatorKeyTypes(owsRequest);
 
-            //TODO make STA a supported service and create an OwsServiceKey from service and version)
-            OwsServiceResponse owsResponse = getServiceOperator(owsRequest).receiveRequest(owsRequest);
+            if (owsRequest instanceof StaGetEntitySetsRequest) {
+                owsResponse = ((StaGetEntitySetsRequest) owsRequest).getResponse();
+
+                // simple check without service operators
+                String service = owsRequest.getService();
+                String version = owsRequest.getVersion();
+
+                if (service == null || service.isEmpty()) {
+                    throw new MissingServiceParameterException();
+                } else if (version == null || version.isEmpty()) {
+                    throw new MissingVersionParameterException();
+                }
+
+            } else {
+                checkServiceOperatorKeyTypes(owsRequest);
+                owsResponse = getServiceOperator(owsRequest).receiveRequest(owsRequest);
+            }
             writeResponse(request, response, owsResponse);
 
         } catch (OwsExceptionReport oer) {
@@ -185,49 +203,55 @@ public class StaBinding extends SimpleBinding {
                 throw new NoApplicableCodeException().withMessage(cause.getMessage()).causedBy(cause);
             }
 
-            // get path parameters as list
+
             List<PathSegment> pathList = new ArrayList<>();
+            StaConstants.PathSegment resourceSegment = null;
+            StaConstants.EntityPathComponent resourceType = null;
+            String resourceId = null;
+            LinkedHashMap<StaConstants.QueryOption, String> queryOptions = null;
+
+            // get resource and query, if available
             if (resourcePath.isEmpty() || resourcePath.equals("/")) {
                 // TODO return links to entity sets (at least for GET)
 
             } else {
+                // get path parameters as list
                 decodeResourcePath(resourcePath, pathList);
-            }
 
-            // get query parameters as map
-            LinkedHashMap<StaConstants.QueryOption, String> queryOptions = null;
-            if (requestQuery != null && !requestQuery.trim().equals("")) {
-                decodeQueryOptions(requestQuery.trim());
-            }
+                // get query parameters as map
+                if (requestQuery != null && !requestQuery.trim().equals("")) {
+                    decodeQueryOptions(requestQuery.trim());
+                }
 
-            // get resource type (to determine which request type to choose)
-            // TODO remove segment and id, only resourceType is needed here
-            StaConstants.PathSegment resourceSegment;
-            StaConstants.EntityPathComponent resourceType;
-            String resourceId;
-            // TODO replace with loop
-            if (pathList.size() > 0 && pathList.get(pathList.size() - 1).getComponent() instanceof StaConstants.EntityPathComponent) {
-                resourceSegment = pathList.get(pathList.size() - 1);
-            } else if (pathList.size() > 1 && pathList.get(pathList.size() - 2).getComponent() instanceof StaConstants.EntityPathComponent) {
-                resourceSegment = pathList.get(pathList.size() - 2);
-            } else if (pathList.size() > 2 && pathList.get(pathList.size() - 3).getComponent() instanceof StaConstants.EntityPathComponent) {
-                resourceSegment = pathList.get(pathList.size() - 3);
-            } else {
-                throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
-            }
+                // get resource type (to determine which request type to choose)
+                // TODO replace with loop
+                if (pathList.size() > 0 && pathList.get(pathList.size() - 1).getComponent() instanceof StaConstants.EntityPathComponent) {
+                    resourceSegment = pathList.get(pathList.size() - 1);
+                } else if (pathList.size() > 1 && pathList.get(pathList.size() - 2).getComponent() instanceof StaConstants.EntityPathComponent) {
+                    resourceSegment = pathList.get(pathList.size() - 2);
+                } else if (pathList.size() > 2 && pathList.get(pathList.size() - 3).getComponent() instanceof StaConstants.EntityPathComponent) {
+                    resourceSegment = pathList.get(pathList.size() - 3);
+                } else {
+                    throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
+                }
 
-            if (resourceSegment != null) {
-                resourceType = (StaConstants.EntityPathComponent) resourceSegment.getComponent();
-                resourceId = resourceSegment.getId();
-            } else {
-                throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
+                if (resourceSegment != null) {
+                    resourceType = (StaConstants.EntityPathComponent) resourceSegment.getComponent();
+                    resourceId = resourceSegment.getId();
+                } else {
+                    throw new IOException("There is no detectable resource in path '" + pathList.toString() + "'");
+                }
             }
 
             // create request
             OwsServiceRequest sosRequest = null;
             switch (request.getMethod()) {
                 case HTTPMethods.GET:
-                    if (StaConstants.EntitySet.Datastreams == resourceType) {
+                    if (resourcePath.isEmpty() || resourcePath.equals("/")) {
+                        // return null and handle this as request for all EntitySet links
+                        sosRequest = new StaGetEntitySetsRequest();
+
+                    } else if (StaConstants.EntitySet.Datastreams == resourceType) {
 
 //                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
 //
@@ -245,7 +269,7 @@ public class StaBinding extends SimpleBinding {
                     } else if (StaConstants.EntitySet.Observations == resourceType) {
 
                         Decoder<OwsServiceRequest, JsonNode> decoder;
-                        if (resourceSegment.getId() == null || resourceSegment.getId().equals("")) {
+                        if (resourceId == null || resourceId.equals("")) {
 
                             // get decoder
                             decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
