@@ -53,9 +53,7 @@ import org.n52.shetland.ogc.sos.SosConstants;
 import org.n52.shetland.ogc.sta.StaConstants;
 import org.n52.shetland.ogc.sta.StaConstants.PathSegment;
 import org.n52.shetland.ogc.sta.StaSettings;
-import org.n52.shetland.ogc.sta.request.StaGetDatastreamsRequest;
 import org.n52.shetland.ogc.sta.request.StaGetEntitySetsRequest;
-import org.n52.shetland.ogc.sta.request.StaGetRequest;
 import org.n52.svalbard.decode.AbstractStaRequestDecoder;
 import org.n52.svalbard.decode.Decoder;
 import org.n52.svalbard.decode.OperationDecoderKey;
@@ -129,7 +127,7 @@ public class StaBinding extends SimpleBinding {
 
             owsRequest = parseRequest(request);
 
-            if (owsRequest instanceof StaGetEntitySetsRequest) {
+            if (owsRequest instanceof StaGetEntitySetsRequest) { // return EntitySet list without database request
                 owsResponse = ((StaGetEntitySetsRequest) owsRequest).getResponse();
 
                 // simple check without service operators
@@ -142,10 +140,11 @@ public class StaBinding extends SimpleBinding {
                     throw new MissingVersionParameterException();
                 }
 
-            } else {
+            } else { // check parameters and request response
                 checkServiceOperatorKeyTypes(owsRequest);
                 owsResponse = getServiceOperator(owsRequest).receiveRequest(owsRequest);
             }
+            // TODO wrap or inherit owsRequest and owsResponse to carry parameters and options, process in ResponseEncoder
             writeResponse(request, response, owsResponse);
 
         } catch (OwsExceptionReport oer) {
@@ -262,21 +261,37 @@ public class StaBinding extends SimpleBinding {
 
                     } else if (StaConstants.EntitySet.FeaturesOfInterest == resourceType) {
 
+                        // get decoder
+                        Decoder<OwsServiceRequest, JsonNode> decoder;
+                        decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
+                            serviceVersion, StaConstants.Operation.GET_FEATURES_OF_INTEREST, MediaTypes.APPLICATION_STA));
+
+                        // set resource path and query options
+                        setStaParameters(decoder, resourceSegment, pathList, queryOptions);
+
+//                        sosRequest.setRequestContext(getRequestContext(request));
+
+                        // decode request
+                        try {
+                            sosRequest = decoder.decode(null);
+
+                        } catch (DecodingException de) {
+                            throw new IOException("GET FeaturesOfInterest request could not be decoded: " + de.getMessage());
+                        }
+
                     } else if (StaConstants.EntitySet.HistoricalLocations == resourceType) {
 
                     } else if (StaConstants.EntitySet.Locations == resourceType) {
 
                     } else if (StaConstants.EntitySet.Observations == resourceType) {
 
+                        // get decoder
                         Decoder<OwsServiceRequest, JsonNode> decoder;
                         if (resourceId == null || resourceId.equals("")) {
 
-                            // get decoder
                             decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
                                     serviceVersion, StaConstants.Operation.GET_OBSERVATIONS, MediaTypes.APPLICATION_STA));
-
                         } else {
-                            // get decoder
                             decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
                                     serviceVersion, StaConstants.Operation.GET_OBSERVATIONS_WITH_ID, MediaTypes.APPLICATION_STA));
                         }
@@ -292,8 +307,6 @@ public class StaBinding extends SimpleBinding {
                         } catch (DecodingException de) {
                             throw new IOException("GET Observations request could not be decoded: " + de.getMessage());
                         }
-
-
                     } else if (StaConstants.EntitySet.ObservedProperties == resourceType) {
 
                     } else if (StaConstants.EntitySet.Sensors == resourceType) {
@@ -301,12 +314,12 @@ public class StaBinding extends SimpleBinding {
                     } else if (StaConstants.EntitySet.Things == resourceType) {
 
                     } else if (StaConstants.Entity.Datastream == resourceType) {
-                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
-
-                        ((StaGetRequest) sosRequest).setPath(pathList);
-                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
-
-                        sosRequest.setRequestContext(getRequestContext(request));
+//                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
+//
+//                        ((StaGetRequest) sosRequest).setPath(pathList);
+//                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
+//
+//                        sosRequest.setRequestContext(getRequestContext(request));
 
                     } else if (StaConstants.Entity.FeatureOfInterest == resourceType) {
 
@@ -576,7 +589,8 @@ public class StaBinding extends SimpleBinding {
         }
     }
 
-    private void setStaParameters(Decoder decoder, StaConstants.PathSegment resource, List<StaConstants.PathSegment> pathList, Map<StaConstants.QueryOption, String> queryOptions) throws IOException {
+    private void setStaParameters(Decoder decoder, StaConstants.PathSegment resource, List<StaConstants.PathSegment> pathList,
+            Map<StaConstants.QueryOption, String> queryOptions) throws IOException {
 
         if (decoder instanceof AbstractStaRequestDecoder) {
 
