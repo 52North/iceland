@@ -127,7 +127,8 @@ public class StaBinding extends SimpleBinding {
 
             owsRequest = parseRequest(request);
 
-            if (owsRequest instanceof StaGetEntitySetsRequest) { // return EntitySet list without database request
+            if (owsRequest instanceof StaGetEntitySetsRequest) {
+                // return EntitySet list without database request
                 owsResponse = ((StaGetEntitySetsRequest) owsRequest).getResponse();
 
                 // simple check without service operators
@@ -140,9 +141,13 @@ public class StaBinding extends SimpleBinding {
                     throw new MissingVersionParameterException();
                 }
 
-            } else { // check parameters and request response
+            } else if (owsRequest != null) {
+                // check parameters and request response
                 checkServiceOperatorKeyTypes(owsRequest);
                 owsResponse = getServiceOperator(owsRequest).receiveRequest(owsRequest);
+
+            } else {
+                throw new IOException("HTTP request could not be parsed.");
             }
             // TODO wrap or inherit owsRequest and owsResponse to carry parameters and options, process in ResponseEncoder
             writeResponse(request, response, owsResponse);
@@ -310,6 +315,24 @@ public class StaBinding extends SimpleBinding {
                     } else if (StaConstants.EntitySet.ObservedProperties == resourceType) {
 
                     } else if (StaConstants.EntitySet.Sensors == resourceType) {
+
+                        // get decoder
+                        Decoder<OwsServiceRequest, JsonNode> decoder;
+                        decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
+                            serviceVersion, StaConstants.Operation.GET_SENSORS, MediaTypes.APPLICATION_STA));
+
+                        // set resource path and query options
+                        setStaParameters(decoder, resourceSegment, pathList, queryOptions);
+
+//                        sosRequest.setRequestContext(getRequestContext(request));
+
+                        // decode request
+                        try {
+                            sosRequest = decoder.decode(null);
+
+                        } catch (DecodingException de) {
+                            throw new IOException("GET Sensors request could not be decoded: " + de.getMessage());
+                        }
 
                     } else if (StaConstants.EntitySet.Things == resourceType) {
 
