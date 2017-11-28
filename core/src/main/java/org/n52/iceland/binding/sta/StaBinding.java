@@ -314,6 +314,23 @@ public class StaBinding extends SimpleBinding {
                         }
                     } else if (StaConstants.EntitySet.ObservedProperties == resourceType) {
 
+                        // get decoder
+                        Decoder<OwsServiceRequest, JsonNode> decoder;
+                        decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
+                            serviceVersion, StaConstants.Operation.GET_OBSERVED_PROPERTIES, MediaTypes.APPLICATION_STA));
+
+                        // set resource path and query options
+                        setStaParameters(decoder, resourceSegment, pathList, queryOptions);
+
+//                        sosRequest.setRequestContext(getRequestContext(request));
+
+                        // decode request
+                        try {
+                            sosRequest = decoder.decode(null);
+
+                        } catch (DecodingException de) {
+                            throw new IOException("GET ObservedProperties request could not be decoded: " + de.getMessage());
+                        }
                     } else if (StaConstants.EntitySet.Sensors == resourceType) {
 
                         // get decoder
