@@ -257,13 +257,23 @@ public class StaBinding extends SimpleBinding {
 
                     } else if (StaConstants.EntitySet.Datastreams == resourceType) {
 
-//                        sosRequest = new StaGetDatastreamsRequest(StaConstants.SERVICE_NAME, serviceVersion);
-//
-//                        ((StaGetRequest) sosRequest).setPath(pathList);
-//                        ((StaGetRequest) sosRequest).setQueryOptions(queryOptions);
-//
+                        // get decoder
+                        Decoder<OwsServiceRequest, JsonNode> decoder;
+                        decoder = getDecoder(new OperationDecoderKey(StaConstants.SERVICE_NAME,
+                            serviceVersion, StaConstants.Operation.GET_DATASTREAMS, MediaTypes.APPLICATION_STA));
+
+                        // set resource path and query options
+                        setStaParameters(decoder, resourceSegment, pathList, queryOptions);
+
 //                        sosRequest.setRequestContext(getRequestContext(request));
 
+                        // decode request
+                        try {
+                            sosRequest = decoder.decode(null);
+
+                        } catch (DecodingException de) {
+                            throw new IOException("GET Datastreams request could not be decoded: " + de.getMessage());
+                        }
                     } else if (StaConstants.EntitySet.FeaturesOfInterest == resourceType) {
 
                         // get decoder
@@ -350,7 +360,6 @@ public class StaBinding extends SimpleBinding {
                         } catch (DecodingException de) {
                             throw new IOException("GET Sensors request could not be decoded: " + de.getMessage());
                         }
-
                     } else if (StaConstants.EntitySet.Things == resourceType) {
 
                     } else if (StaConstants.Entity.Datastream == resourceType) {
